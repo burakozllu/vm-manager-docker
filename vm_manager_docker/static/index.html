@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VM Manager · Docker</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23687ef5'/%3E%3Ctext x='20' y='25' text-anchor='middle' font-family='sans-serif' font-size='15' fill='white'%3EVM%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/terminal.bundle.css">
+  <script src="/static/terminal.bundle.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="loading-config">
+<section id="setup-screen" hidden>
+  <div class="setup-brand"><span class="brand-icon">VM</span><div><h1>Welcome to VM Manager</h1><p class="muted">Connect your own Windows VirtualBox host to get started.</p></div></div>
+  <div class="two-column"><div class="panel form-panel"><h3>First-run setup</h3><p class="muted">Your host settings and SSH identity are saved only in this installation's private runtime storage.</p>
+    <div id="setup-error" class="alert" role="alert" hidden></div>
+    <form id="setup-form">
+      <label>Windows host<input name="hostname" placeholder="Host name or address" required maxlength="253" autocomplete="off"></label>
+      <div class="field-row"><label>Windows SSH account<input name="username" placeholder="Your Windows SSH username" required maxlength="128" autocomplete="off"></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="22" required></label></div>
+      <label>VM storage folder on Windows<input name="vm_root" value="C:\VMs" required></label>
+      <label>SSH private key file<input name="private_key" type="file" required><small>Select a private key that can authenticate to Windows without an interactive passphrase.</small></label>
+      <label>Matching public key file · optional<input name="public_key" type="file"><small>If omitted, the app derives it from your private key. This public key is installed in new Kali guests.</small></label>
+      <details><summary>Advanced paths and known hosts</summary><div class="stack setup-advanced">
+        <label>VBoxManage path<input name="vboxmanage" value="C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" required></label>
+        <label>7-Zip path<input name="sevenzip" value="C:\Program Files\7-Zip\7z.exe" required></label>
+        <label>Known hosts file · optional<input name="known_hosts" type="file"></label>
+      </div></details>
+      <button type="submit" class="button primary wide">Save & open dashboard</button>
+    </form>
+  </div><div class="panel form-panel setup-about"><div class="eyebrow accent">YOUR SETTINGS STAY LOCAL</div><h3>A clean project. Your own host.</h3><p class="muted">The application ships without a host address, account or SSH key. This form appears only when configuration is missing or incomplete.</p><div class="flow-step"><span>1</span><p>Enable OpenSSH on the Windows PC and authorize your SSH public key.</p></div><div class="flow-step"><span>2</span><p>Install VirtualBox and 7-Zip on that PC.</p></div><div class="flow-step"><span>3</span><p>Save these settings. Future starts load them from the persistent Docker data volume.</p></div><p class="form-note">The project contains no user-specific connection details. Settings, keys, known hosts, job history and VM passwords belong to runtime storage, outside the shared source and image.</p></div></div>
+</section>
+<aside class="sidebar">
+  <a class="brand" href="#overview"><span class="brand-icon">VM</span><span>VM Manager<small>DOCKER EDITION</small></span></a>
+  <div class="nav-label">WORKSPACE</div>
+  <nav aria-label="Main navigation">
+    <a href="#overview" data-page="overview" class="active"><span>▦</span>Virtual machines</a>
+    <a href="#deploy" data-page="deploy"><span>＋</span>Deploy a VM</a>
+    <a href="#jobs" data-page="jobs"><span>≡</span>Activity<span class="counter" id="job-counter">0</span></a>
+    <a href="#terminals" data-page="terminals"><span>▣</span>Terminals</a>
+    <a href="#api" data-page="api"><span>⌘</span>API & CLI</a>
+    <a href="#host" data-page="host"><span>⚙</span>Host details</a>
+  </nav>
+  <div class="sidebar-bottom"><span class="dot" id="service-dot"></span><span>Local control plane<small id="target-host">Connecting…</small></span></div>
+</aside>
+<main>
+  <header class="topbar"><div><span class="eyebrow">YOUR VIRTUALIZATION WORKSPACE</span><h1 id="page-title">Virtual machines</h1></div><div class="header-actions"><span class="local-badge">LOCALHOST · :8080</span><a class="button primary" href="#deploy">＋ Deploy VM</a></div></header>
+  <div id="alert" class="alert" role="alert" hidden></div>
+
+  <section id="page-overview" class="page">
+    <div class="intro"><div><h2>Your machines, one place.</h2><p>Deploy, run and maintain VirtualBox guests on your Windows host.</p></div><button id="refresh" class="button secondary">↻ Refresh</button></div>
+    <div class="stats">
+      <article class="stat"><div class="stat-label">TOTAL MACHINES <span>▦</span></div><strong id="stat-total">—</strong><small>Registered on the host</small></article>
+      <article class="stat"><div class="stat-label">RUNNING <span class="green">●</span></div><strong id="stat-running">—</strong><small>Active virtual machines</small></article>
+      <article class="stat"><div class="stat-label">ALLOCATED MEMORY <span>▤</span></div><strong id="stat-memory">—</strong><small>Across running guests</small></article>
+      <article class="stat"><div class="stat-label">HOST FREE MEMORY <span>◇</span></div><strong id="stat-free">—</strong><small id="host-os">Waiting for host diagnostics</small></article>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h3>Virtual machine inventory <span class="count-badge" id="inventory-count">0</span></h3><p id="inventory-caption">Fetching the current host state…</p></div><label class="search"><span>⌕</span><input id="search" placeholder="Filter machines…" aria-label="Filter machines"></label></div>
+      <div class="table-scroll"><table><thead><tr><th>MACHINE</th><th>STATUS</th><th>RESOURCES</th><th>SSH ACCESS</th><th class="align-right">CONTROLS</th></tr></thead><tbody id="vm-table"><tr><td colspan="5" class="empty">Connecting to your host…</td></tr></tbody></table></div>
+      <div class="panel-foot"><span><span class="dot green-dot"></span>Managed over SSH</span><span id="last-refresh">—</span></div>
+    </div>
+    <div class="hint-grid"><div class="hint"><span class="hint-icon">↗</span><div><h3>SSH, without extra open ports</h3><p>New guests use the Windows SSH connection as a jump host. Copy a connection command from any machine.</p></div></div><a class="hint linked" href="#api"><span class="hint-icon">⌘</span><div><h3>Prefer your terminal?</h3><p>The same controls are available through REST endpoints and the vmctl command-line client.</p></div><span>→</span></a></div>
+  </section>
+
+  <section id="page-deploy" class="page" hidden>
+    <div class="intro"><div><h2>Build your next environment.</h2><p>Provision Kali with SSH ready, boot an OS installer, or import an appliance.</p></div></div>
+    <div class="two-column"><div class="panel form-panel"><h3>Deploy a virtual machine</h3>
+      <form id="deploy-form">
+        <label>Deployment type<select name="kind" id="deploy-kind"><option value="kali">Kali Linux · SSH-ready</option><option value="iso">Operating system from ISO</option><option value="import">VirtualBox / OVA appliance</option></select></label>
+        <label>Machine name<input name="name" placeholder="Kali-Lab" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_.-]{0,63}"></label>
+        <label data-kinds="iso">Installer ISO<input name="iso" id="deploy-iso" placeholder="HTTPS URL or F:\Installers\installer.iso"><small>Windows host path or a direct HTTPS download URL.</small></label>
+        <label data-kinds="import">Appliance source<input name="source" id="deploy-source" placeholder="F:\Appliances\lab.ova"><small>Supports .ova, .ovf, .vbox and .7z containing a VirtualBox VM.</small></label>
+        <label data-kinds="kali">Kali release<input name="version" placeholder="Latest official release"><small>Optional point release, for example 2026.3.</small></label>
+        <label data-kinds="iso import">SHA-256 checksum<input name="sha256" placeholder="Optional, 64 hexadecimal characters" pattern="[0-9A-Fa-f]{64}"></label>
+        <div class="field-row" data-kinds="iso"><label>VirtualBox OS type<input name="os_type" value="Debian_64" list="os-types"><datalist id="os-types"><option>Debian_64</option><option>Ubuntu_64</option><option>Windows11_64</option><option>Windows10_64</option><option>RedHat_64</option></datalist></label><label>Firmware<select name="firmware"><option value="bios">BIOS</option><option value="efi">EFI</option></select></label></div>
+        <div class="field-row"><label>Memory · MiB<input name="memory" type="number" min="512" max="1048576" value="8192"></label><label>Virtual CPUs<input name="cpus" type="number" min="1" max="256" value="4"></label><label data-kinds="iso">Disk · GiB<input name="disk" type="number" min="10" value="60"></label></div>
+        <div class="field-row"><label>Guest SSH user<input name="user" value="kali" placeholder="Guest account"></label><label>SSH access<select name="access"><option value="tunnel">Tunnel through Windows SSH</option><option value="lan">Direct LAN access</option></select></label></div>
+        <label data-kinds="iso import" class="checkbox"><input name="start" type="checkbox" checked>Start the VM after creation</label>
+        <p class="form-note" id="deploy-note">Verifies the official image, provisions your public key and generates a login/sudo password in the job result.</p>
+        <button type="submit" class="button primary wide">＋ Deploy virtual machine</button>
+      </form>
+    </div><div class="stack"><div class="panel form-panel"><h3>Upload an ISO or appliance</h3><p class="muted">Transfer a file from this machine to the Windows host. The resulting path can be used in the deployment form.</p><form id="upload-form"><label class="file-drop">Choose a file<input type="file" name="file" required></label><button class="button secondary wide" type="submit">Upload to host</button></form><p class="form-note">The transfer runs as a background job and verifies the file checksum.</p></div><div class="panel form-panel"><div class="eyebrow accent">HOW IT WORKS</div><h3>Hardware here. Guests there.</h3><p class="muted">This container is your control plane. VirtualBox and all virtual machines run on the Windows PC.</p><div class="flow-step"><span>1</span><p>Choose an image and VM resources.</p></div><div class="flow-step"><span>2</span><p>Follow deployment in Activity.</p></div><div class="flow-step"><span>3</span><p>Open the guest console on Windows for ISO installations, or connect directly to a provisioned Kali VM over SSH.</p></div></div></div></div>
+  </section>
+
+  <section id="page-jobs" class="page" hidden><div class="intro"><div><h2>Every operation, tracked.</h2><p>Background jobs keep long deployments running while you use the dashboard.</p></div><button class="button secondary" id="refresh-jobs">↻ Refresh</button></div><div class="panel"><div class="panel-head"><div><h3>Recent activity</h3><p>Job history is persisted in the Docker data volume.</p></div></div><div class="table-scroll"><table><thead><tr><th>OPERATION</th><th>STATUS</th><th>SUBMITTED</th><th>DURATION</th><th></th></tr></thead><tbody id="jobs-table"></tbody></table></div></div></section>
+
+  <section id="page-terminals" class="page" hidden>
+    <div class="intro"><div><h2>Your remote consoles.</h2><p>Interactive SSH terminals for the Windows host and your running VMs.</p></div></div>
+    <div class="panel terminal-panel">
+      <div class="terminal-toolbar"><div class="button-row"><button id="terminal-host-powershell" class="button secondary small">＋ Windows PowerShell</button><button id="terminal-host-cmd" class="button secondary small">＋ Windows CMD</button><select id="terminal-vm" aria-label="VM for terminal"><option value="">Choose a running VM…</option></select><input id="terminal-user" aria-label="Terminal guest username" placeholder="Guest user · optional"><button id="terminal-open-vm" class="button primary small">＋ VM terminal</button></div>
+        <div class="button-row"><label class="terminal-theme-label">Display<select id="terminal-theme"><option value="amber">Retro amber</option><option value="green">Retro green</option><option value="ice">Ice monochrome</option><option value="modern">Modern</option></select></label><label class="checkbox"><input type="checkbox" id="terminal-effects" checked>CRT effects</label><button id="terminal-reconnect" class="button secondary small">Reconnect</button><button id="terminal-copy" class="button secondary small">Copy selection</button><button id="terminal-paste" class="button secondary small">Paste</button></div>
+      </div>
+      <div id="terminal-tabs" class="terminal-tabs" role="group" aria-label="Terminal sessions"></div>
+      <div id="terminal-stage" class="terminal-stage"><div id="terminal-empty" class="terminal-empty"><strong>READY.</strong><p>Open a Windows shell or select a running VM.<br>Use the Terminal button in the inventory for a direct guest session.</p></div></div>
+      <div class="panel-foot"><span id="terminal-status">No active session</span><span>SSH · terminal traffic is not recorded</span></div>
+    </div>
+    <p class="form-note">Retro CRT styling inspired by cool-retro-term; powered by xterm.js in your browser. SSH uses your configured key and can prompt for a guest password. Closing a tab or reloading the page ends that session.</p>
+  </section>
+
+  <section id="page-api" class="page" hidden><div class="intro"><div><h2>Built for your terminal, too.</h2><p>Use the HTTP CLI or call REST endpoints directly.</p></div><a class="button secondary" href="/docs" target="_blank" rel="noreferrer">Open API explorer ↗</a></div><div class="two-column"><div class="panel form-panel"><h3>HTTP command-line client</h3><p class="muted">Run from the vm-manager-docker project folder.</p><pre>./vmctl list
+./vmctl start Kali
+./vmctl ssh-info Kali
+./vmctl --no-wait deploy-kali Kali-Lab
+./vmctl jobs</pre><p class="form-note">The client waits for completion by default. With --no-wait it returns a job ID immediately.</p></div><div class="panel form-panel"><h3>REST calls with curl</h3><pre>curl http://127.0.0.1:8080/api/vms
+
+curl -X POST \
+  http://127.0.0.1:8080/api/vms/Kali/actions/start \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+
+curl -X POST \
+  http://127.0.0.1:8080/api/commands \
+  -H 'Content-Type: application/json' \
+  -d '{"argv":["list"]}'</pre></div></div><div class="panel form-panel api-table"><h3>Endpoint reference</h3><div id="api-reference"></div><p class="form-note">POST requests return HTTP 202 with a job ID. Poll GET /api/jobs/{id} for status, results and generated credentials.</p></div></section>
+
+  <section id="page-host" class="page" hidden><div class="intro"><div><h2>Your Windows host.</h2><p>Live diagnostics from the machine running VirtualBox.</p></div><button class="button secondary" id="refresh-host">↻ Refresh</button></div><div class="panel form-panel"><h3>Host configuration & diagnostics</h3><pre id="host-details">Loading…</pre><p class="form-note">Edit config.toml in the project and restart the container to change the managed host or defaults.</p></div></section>
+
+  <footer>VM Manager Docker <span>·</span> VirtualBox over SSH <span>·</span> <a href="/docs" target="_blank" rel="noreferrer">REST API documentation ↗</a></footer>
+</main>
+<dialog id="vm-dialog"><div class="dialog-header"><div><span class="eyebrow">MACHINE CONTROLS</span><h2 id="vm-dialog-title">Virtual machine</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="vm-dialog-body"></div></dialog>
+<dialog id="job-dialog"><div class="dialog-header"><div><span class="eyebrow">OPERATION RESULT</span><h2>Job details</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="job-status"></div><div id="job-credentials"></div><details class="detail-section"><summary>Full job JSON</summary><pre id="job-result"></pre></details></dialog>
+<dialog id="credentials-dialog"><div class="dialog-header"><div><span class="eyebrow">SAVED LOGIN / SUDO PASSWORD</span><h2 id="credentials-title">VM credentials</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="credentials-body"></div></dialog>
+<div id="toasts" aria-live="polite"></div>
+</body>
+</html>

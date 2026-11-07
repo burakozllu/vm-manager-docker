@@ -1,0 +1,17 @@
+# Reference template only. On first launch, complete the dashboard setup form.
+# Personal values belong in /data/config.toml (Docker runtime storage), not here.
+[host]
+hostname = ""
+username = ""
+port = 22
+connect_timeout = 10
+vm_root = 'C:\VMs'
+vboxmanage = 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
+sevenzip = 'C:\Program Files\7-Zip\7z.exe'
+
+[defaults]
+memory = 4096
+cpus = 2
+disk = 60
+ssh_port_start = 2222
+ssh_access = "tunnel"

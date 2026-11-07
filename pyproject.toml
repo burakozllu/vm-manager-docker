@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vm-manager-docker"
+version = "0.1.0"
+description = "Dockerized dashboard and REST API for remote VirtualBox management"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "python-multipart>=0.0.20,<1", "websockets>=15,<17"]
+
+[project.optional-dependencies]
+test = ["httpx>=0.28,<1", "playwright>=1.50,<2"]
+
+[project.scripts]
+vmctl = "vm_manager_docker.client:main"
+
+[tool.setuptools.package-data]
+vm_manager_docker = ["static/*"]
+
+[tool.setuptools.packages.find]
+include = ["vm_manager_docker*"]
